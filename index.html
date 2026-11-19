@@ -3,8 +3,10 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>AB3 QR Kamera Testi</title>
+  <meta name="viewport"
+        content="width=device-width, initial-scale=1">
+  <title>AB3 QR Okuma Testi</title>
+
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -32,25 +34,46 @@
       font-size: 16px;
       cursor: pointer;
     }
-    button:disabled { background: #929aa8; }
+    button:disabled {
+      background: #929aa8;
+      cursor: not-allowed;
+    }
     video {
       width: 100%;
       margin-top: 18px;
       border-radius: 10px;
       background: #000;
     }
-    #hata { color: #b42318; overflow-wrap: anywhere; }
-    #sonuc { overflow-wrap: anywhere; font-weight: bold; }
-    .uyari { color: #a15c00; font-weight: bold; }
+    #hata {
+      color: #b42318;
+      overflow-wrap: anywhere;
+    }
+    #sonuc {
+      overflow-wrap: anywhere;
+      font-weight: bold;
+      color: #17365d;
+    }
+    .uyari {
+      color: #a15c00;
+      font-weight: bold;
+    }
   </style>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 </head>
+
 <body>
   <main class="panel">
     <h1>ÖzÜ Spor Okulu</h1>
     <h2>AB3 QR Okuma Testi</h2>
-    <p class="uyari">TEST MODU - GİRİŞ YETKİSİ VERİLMEZ</p>
 
-    <button id="ac" onclick="kameraAc()">Kamerayı Aç</button>
+    <p class="uyari">
+      TEST MODU - GİRİŞ YETKİSİ VERİLMEZ
+    </p>
+
+    <button id="ac" onclick="kameraAc()">
+      Kamerayı Aç
+    </button>
     <button id="kapat" onclick="kameraKapat()" disabled>
       Kamerayı Kapat
     </button>
@@ -62,17 +85,19 @@
     <p id="sonuc"></p>
     <p id="hata"></p>
 
-    <p>Bu sayfa QR kodunu yalnızca cihazınızda okur.
-       Okunan bilgi sunucuya gönderilmez.
-       Gerçek giriş kontrolü yapılmaz.</p>
+    <p>
+      Bu sayfa QR kodunu yalnızca cihazınızda okur.
+      Okunan bilgi sunucuya gönderilmez.
+      Gerçek giriş kontrolü yapılmaz.
+    </p>
   </main>
 
   <script>
     let akis = null;
-    let tarayici = null;
     let taramaAktif = false;
     let sonOkunan = "";
     let sonOkumaZamani = 0;
+    let taramaKimligi = null;
 
     const video = document.getElementById("video");
     const durum = document.getElementById("durum");
@@ -81,11 +106,23 @@
     const ac = document.getElementById("ac");
     const kapat = document.getElementById("kapat");
 
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d", {
+      willReadFrequently: true
+    });
+
     async function kameraAc() {
       if (akis) return;
 
       hataAlani.textContent = "";
       sonuc.textContent = "";
+
+      if (typeof jsQR !== "function") {
+        durum.textContent = "QR okuyucu yüklenemedi.";
+        hataAlani.textContent =
+          "İnternet bağlantısını kontrol edin.";
+        return;
+      }
 
       if (!navigator.mediaDevices?.getUserMedia) {
         durum.textContent = "Kamera API kullanılamıyor.";
@@ -98,7 +135,9 @@
       try {
         akis = await navigator.mediaDevices.getUserMedia({
           audio: false,
-          video: { facingMode: { ideal: "environment" } }
+          video: {
+            facingMode: { ideal: "environment" }
+          }
         });
 
         video.srcObject = akis;
@@ -106,24 +145,11 @@
         await video.play();
 
         kapat.disabled = false;
-
-        if (!("BarcodeDetector" in window)) {
-          durum.textContent = "Kamera açık, QR okuyucu desteklenmiyor.";
-          hataAlani.textContent =
-            "Bu tarayıcı BarcodeDetector özelliğini desteklemiyor.";
-          return;
-        }
-
-        const formatlar = await BarcodeDetector.getSupportedFormats();
-
-        if (!formatlar.includes("qr_code")) {
-          durum.textContent = "Kamera açık, QR formatı desteklenmiyor.";
-          return;
-        }
-
-        tarayici = new BarcodeDetector({ formats: ["qr_code"] });
         taramaAktif = true;
-        durum.textContent = "Kamera açık. QR kodunu kameraya gösterin.";
+
+        durum.textContent =
+          "Kamera açık. QR kodunu kameraya gösterin.";
+
         tara();
 
       } catch (hata) {
@@ -134,45 +160,59 @@
       }
     }
 
-    async function tara() {
-      while (taramaAktif && akis) {
-        try {
-          if (video.readyState >= 2 && tarayici) {
-            const kodlar = await tarayici.detect(video);
+    function tara() {
+      if (!taramaAktif || !akis) return;
 
-            if (!taramaAktif) break;
+      if (video.readyState >= 2 &&
+          video.videoWidth > 0 &&
+          video.videoHeight > 0) {
 
-            if (kodlar.length > 0) {
-              const veri = kodlar[0].rawValue;
-              const simdi = Date.now();
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
 
-              if (veri !== sonOkunan ||
-                  simdi - sonOkumaZamani > 3000) {
-                sonOkunan = veri;
-                sonOkumaZamani = simdi;
+        ctx.drawImage(
+          video, 0, 0, canvas.width, canvas.height
+        );
 
-                sonuc.textContent =
-                  "QR OKUNDU (TEST): " + veri;
+        const goruntu = ctx.getImageData(
+          0, 0, canvas.width, canvas.height
+        );
 
-                durum.textContent =
-                  "QR algılandı. Giriş yetkisi verilmedi.";
-              }
-            }
+        const kod = jsQR(
+          goruntu.data,
+          goruntu.width,
+          goruntu.height,
+          { inversionAttempts: "attemptBoth" }
+        );
+
+        if (kod) {
+          const simdi = Date.now();
+
+          if (kod.data !== sonOkunan ||
+              simdi - sonOkumaZamani > 3000) {
+
+            sonOkunan = kod.data;
+            sonOkumaZamani = simdi;
+
+            sonuc.textContent =
+              "QR OKUNDU (TEST): " + kod.data;
+
+            durum.textContent =
+              "QR algılandı. Giriş yetkisi verilmedi.";
           }
-        } catch (hata) {
-          hataAlani.textContent =
-            "QR tarama hatası: " + hata.message;
-          taramaAktif = false;
-          break;
         }
-
-        await new Promise(resolve => setTimeout(resolve, 250));
       }
+
+      taramaKimligi = requestAnimationFrame(tara);
     }
 
     function kameraKapat() {
       taramaAktif = false;
-      tarayici = null;
+
+      if (taramaKimligi !== null) {
+        cancelAnimationFrame(taramaKimligi);
+        taramaKimligi = null;
+      }
 
       if (akis) {
         akis.getTracks().forEach(iz => iz.stop());
