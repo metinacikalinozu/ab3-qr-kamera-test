@@ -5,7 +5,8 @@
   <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1">
-  <title>AB3 QR Kamera Testi</title>
+
+  <title>AB3 QR Kamera ve Google Giriş Testi</title>
 
   <style>
     body {
@@ -72,13 +73,37 @@
     .bilgi {
       font-size: 13px;
       color: #667085;
+      line-height: 1.5;
+    }
+
+    .hesap {
+      margin: 15px 0;
+      padding: 12px;
+      background: #eef4fb;
+      border-radius: 8px;
+      overflow-wrap: anywhere;
+    }
+
+    #googleGiris {
+      display: flex;
+      justify-content: center;
+      margin: 18px 0;
+    }
+
+    #kameraAlani {
+      display: none;
     }
   </style>
 
-  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
+  <script src="https://accounts.google.com/gsi/client"
+          async defer></script>
+
+  <script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js">
+  </script>
 </head>
 
 <body>
+
   <main class="panel">
 
     <h1>ÖzÜ Spor Okulu</h1>
@@ -88,23 +113,54 @@
       TEST MODU - GİRİŞ YETKİSİ VERİLMEZ
     </p>
 
-    <button id="ac" onclick="kameraAc()">
-      Kamerayı Aç
-    </button>
+    <section id="girisAlani">
 
-    <button id="kapat"
-            onclick="kameraKapat()"
-            disabled>
-      Kamerayı Kapat
-    </button>
+      <p>
+        Kamera testine devam etmek için
+        Özyeğin Üniversitesi Google hesabınızla
+        oturum açın.
+      </p>
 
-    <video id="video"
-           autoplay
-           muted
-           playsinline
-           style="display:none;"></video>
+      <div id="googleGiris"></div>
 
-    <p id="durum">Kamera kapalı.</p>
+    </section>
+
+    <section id="kameraAlani">
+
+      <div class="hesap">
+        <strong>Google oturumu:</strong>
+        <div id="hesapBilgisi"></div>
+        <p class="bilgi">
+          Kimlik sunucuda doğrulanmadı.
+          Bu oturum gerçek yetki sağlamaz.
+        </p>
+      </div>
+
+      <button id="cikis" onclick="oturumuKapat()">
+        Oturumu Kapat
+      </button>
+
+      <div>
+        <button id="ac" onclick="kameraAc()">
+          Kamerayı Aç
+        </button>
+
+        <button id="kapat"
+                onclick="kameraKapat()"
+                disabled>
+          Kamerayı Kapat
+        </button>
+      </div>
+
+      <video id="video"
+             autoplay
+             muted
+             playsinline
+             style="display:none;"></video>
+
+    </section>
+
+    <p id="durum">Google oturumu bekleniyor.</p>
     <p id="sonuc"></p>
     <p id="hata"></p>
 
@@ -117,6 +173,15 @@
   </main>
 
   <script>
+
+    // Google Cloud OAuth istemci kimliği.
+    // Buraya yalnızca Client ID yazılır.
+    // Client Secret kesinlikle kullanılmaz.
+    const GOOGLE_CLIENT_ID =
+      "BURAYA_GOOGLE_CLIENT_ID_YAZILACAK";
+
+    let testOturumuAcik = false;
+
     let akis = null;
     let taramaAktif = false;
     let sonOkunan = "";
@@ -136,7 +201,179 @@
       willReadFrequently: true
     });
 
+    // Google Identity Services yüklenmesini bekle.
+    function googleBaslat() {
+
+      if (!window.google?.accounts?.id) {
+
+        durum.textContent =
+          "Google giriş hizmeti henüz yüklenemedi.";
+
+        hataAlani.textContent =
+          "Sayfayı yenileyin veya internet bağlantısını kontrol edin.";
+
+        return;
+      }
+
+      if (
+        GOOGLE_CLIENT_ID ===
+        "BURAYA_GOOGLE_CLIENT_ID_YAZILACAK"
+      ) {
+
+        durum.textContent =
+          "Google Client ID henüz tanımlanmadı.";
+
+        return;
+      }
+
+      google.accounts.id.initialize({
+
+        client_id: GOOGLE_CLIENT_ID,
+
+        callback: googleGirisSonucu,
+
+        auto_select: false
+
+      });
+
+      google.accounts.id.renderButton(
+
+        document.getElementById("googleGiris"),
+
+        {
+          theme: "outline",
+          size: "large",
+          text: "signin_with",
+          shape: "rectangular"
+        }
+
+      );
+
+      durum.textContent =
+        "Google ile giriş yapabilirsiniz.";
+    }
+
+    // JWT yükü yalnızca arayüz testi için okunur.
+    // Buradaki bilgiler güvenilir yetki kanıtı değildir.
+    function jwtBilgisiOku(token) {
+
+      const bolumler = String(token || "").split(".");
+
+      if (bolumler.length !== 3) {
+        throw new Error("Geçersiz oturum yanıtı.");
+      }
+
+      const base64 = bolumler[1]
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
+
+      const tamamlanmis = base64.padEnd(
+        Math.ceil(base64.length / 4) * 4,
+        "="
+      );
+
+      const metin = atob(tamamlanmis);
+
+      return JSON.parse(metin);
+    }
+
+    function googleGirisSonucu(response) {
+
+      try {
+
+        const bilgi = jwtBilgisiOku(
+          response.credential
+        );
+
+        const email = String(
+          bilgi.email || ""
+        ).trim().toLowerCase();
+
+        const alanAdi = String(
+          bilgi.hd || ""
+        ).trim().toLowerCase();
+
+        if (
+          !email.endsWith("@ozyegin.edu.tr") ||
+          alanAdi !== "ozyegin.edu.tr"
+        ) {
+
+          throw new Error(
+            "Bu test yalnızca Özyeğin Üniversitesi " +
+            "Google Workspace hesapları içindir."
+          );
+        }
+
+        // Yalnızca yerel arayüz testi.
+        // Sunucu doğrulaması ve gerçek yetki yok.
+        testOturumuAcik = true;
+
+        document.getElementById(
+          "hesapBilgisi"
+        ).textContent = email;
+
+        document.getElementById(
+          "girisAlani"
+        ).style.display = "none";
+
+        document.getElementById(
+          "kameraAlani"
+        ).style.display = "block";
+
+        hataAlani.textContent = "";
+
+        durum.textContent =
+          "Google oturum arayüzü testi tamamlandı. " +
+          "Kamera kullanılabilir; giriş yetkisi kapalı.";
+
+      } catch (err) {
+
+        oturumuKapat();
+
+        hataAlani.textContent = err.message;
+
+      }
+    }
+
+    function oturumuKapat() {
+
+      kameraKapat();
+
+      testOturumuAcik = false;
+
+      document.getElementById(
+        "hesapBilgisi"
+      ).textContent = "";
+
+      document.getElementById(
+        "kameraAlani"
+      ).style.display = "none";
+
+      document.getElementById(
+        "girisAlani"
+      ).style.display = "block";
+
+      sonuc.textContent = "";
+
+      durum.textContent =
+        "Google oturumu kapatıldı.";
+
+      // Uygulama oturumunu kapatır.
+      // Google hesabından genel çıkış yapmaz.
+      if (window.google?.accounts?.id) {
+        google.accounts.id.disableAutoSelect();
+      }
+    }
+
     async function kameraAc() {
+
+      if (!testOturumuAcik) {
+
+        hataAlani.textContent =
+          "Önce Google oturum arayüzü testini tamamlayın.";
+
+        return;
+      }
 
       if (akis) return;
 
@@ -146,33 +383,65 @@
       sonOkumaZamani = 0;
 
       if (typeof jsQR !== "function") {
-        durum.textContent = "QR okuyucu yüklenemedi.";
+
+        durum.textContent =
+          "QR okuyucu yüklenemedi.";
+
         hataAlani.textContent =
           "İnternet bağlantısını kontrol edin.";
+
         return;
       }
 
       if (!navigator.mediaDevices?.getUserMedia) {
-        durum.textContent = "Kamera API kullanılamıyor.";
+
+        durum.textContent =
+          "Kamera API kullanılamıyor.";
+
         return;
       }
 
       ac.disabled = true;
-      durum.textContent = "Kamera başlatılıyor...";
+
+      durum.textContent =
+        "Kamera başlatılıyor...";
 
       try {
 
-        akis = await navigator.mediaDevices.getUserMedia({
-          audio: false,
-          video: {
-            facingMode: { ideal: "environment" }
-          }
-        });
+        const yeniAkis =
+          await navigator.mediaDevices.getUserMedia({
+
+            audio: false,
+
+            video: {
+              facingMode: {
+                ideal: "environment"
+              }
+            }
+
+          });
+
+        // Kamera izni beklenirken oturum kapatılmış olabilir.
+        if (!testOturumuAcik) {
+
+          yeniAkis.getTracks().forEach(
+            iz => iz.stop()
+          );
+
+          return;
+        }
+
+        akis = yeniAkis;
 
         video.srcObject = akis;
         video.style.display = "block";
 
         await video.play();
+
+        if (!testOturumuAcik) {
+          kameraKapat();
+          return;
+        }
 
         kapat.disabled = false;
         taramaAktif = true;
@@ -186,16 +455,25 @@
 
         kameraKapat();
 
-        durum.textContent = "Kamera açılamadı.";
+        durum.textContent =
+          "Kamera açılamadı.";
 
         hataAlani.textContent =
-          "Hata: " + err.name + " - " + err.message;
+          "Hata: " + err.name +
+          " - " + err.message;
+
       }
     }
 
     function tara() {
 
-      if (!taramaAktif || !akis) return;
+      if (
+        !taramaAktif ||
+        !akis ||
+        !testOturumuAcik
+      ) {
+        return;
+      }
 
       if (
         video.readyState >= 2 &&
@@ -207,20 +485,27 @@
         canvas.height = video.videoHeight;
 
         ctx.drawImage(
-          video, 0, 0,
-          canvas.width, canvas.height
+          video,
+          0,
+          0,
+          canvas.width,
+          canvas.height
         );
 
         const goruntu = ctx.getImageData(
-          0, 0,
-          canvas.width, canvas.height
+          0,
+          0,
+          canvas.width,
+          canvas.height
         );
 
         const kod = jsQR(
           goruntu.data,
           goruntu.width,
           goruntu.height,
-          { inversionAttempts: "attemptBoth" }
+          {
+            inversionAttempts: "attemptBoth"
+          }
         );
 
         if (kod) {
@@ -236,18 +521,20 @@
             sonOkumaZamani = simdi;
 
             qrAlgilandi();
+
           }
         }
       }
 
-      taramaKimligi = requestAnimationFrame(tara);
+      taramaKimligi =
+        requestAnimationFrame(tara);
     }
 
     function qrAlgilandi() {
 
       // TEST MODU:
-      // QR içeriği ekranda gösterilmez.
-      // Sunucuya veri gönderilmez.
+      // QR içeriği gösterilmez.
+      // Sunucuya gönderilmez.
       // Gerçek giriş izni verilmez.
 
       sonuc.textContent =
@@ -263,12 +550,20 @@
       taramaAktif = false;
 
       if (taramaKimligi !== null) {
-        cancelAnimationFrame(taramaKimligi);
+
+        cancelAnimationFrame(
+          taramaKimligi
+        );
+
         taramaKimligi = null;
       }
 
       if (akis) {
-        akis.getTracks().forEach(iz => iz.stop());
+
+        akis.getTracks().forEach(
+          iz => iz.stop()
+        );
+
         akis = null;
       }
 
@@ -276,16 +571,24 @@
       video.srcObject = null;
       video.style.display = "none";
 
-      ac.disabled = false;
+      ac.disabled = !testOturumuAcik;
       kapat.disabled = true;
 
-      durum.textContent = "Kamera kapalı.";
+      durum.textContent =
+        "Kamera kapalı.";
     }
 
     window.addEventListener(
       "pagehide",
       kameraKapat
     );
+
+    window.addEventListener(
+      "load",
+      googleBaslat
+    );
+
   </script>
+
 </body>
 </html>
