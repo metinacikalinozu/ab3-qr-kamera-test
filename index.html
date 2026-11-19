@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport"
         content="width=device-width, initial-scale=1">
-  <title>AB3 QR Okuma Testi</title>
+  <title>AB3 QR Kamera Testi</title>
 
   <style>
     body {
@@ -15,6 +15,7 @@
       padding: 20px;
       text-align: center;
     }
+
     .panel {
       max-width: 460px;
       margin: 30px auto;
@@ -23,7 +24,11 @@
       border-radius: 14px;
       box-shadow: 0 4px 16px #00000015;
     }
-    h1 { color: #17365d; }
+
+    h1 {
+      color: #17365d;
+    }
+
     button {
       background: #17365d;
       color: white;
@@ -34,28 +39,39 @@
       font-size: 16px;
       cursor: pointer;
     }
+
     button:disabled {
       background: #929aa8;
       cursor: not-allowed;
     }
+
     video {
       width: 100%;
       margin-top: 18px;
       border-radius: 10px;
       background: #000;
     }
+
     #hata {
       color: #b42318;
       overflow-wrap: anywhere;
     }
+
     #sonuc {
-      overflow-wrap: anywhere;
       font-weight: bold;
       color: #17365d;
+      padding: 12px;
+      border-radius: 8px;
     }
+
     .uyari {
       color: #a15c00;
       font-weight: bold;
+    }
+
+    .bilgi {
+      font-size: 13px;
+      color: #667085;
     }
   </style>
 
@@ -64,8 +80,9 @@
 
 <body>
   <main class="panel">
+
     <h1>ÖzÜ Spor Okulu</h1>
-    <h2>AB3 QR Okuma Testi</h2>
+    <h2>AB3 QR Kamera Testi</h2>
 
     <p class="uyari">
       TEST MODU - GİRİŞ YETKİSİ VERİLMEZ
@@ -74,22 +91,29 @@
     <button id="ac" onclick="kameraAc()">
       Kamerayı Aç
     </button>
-    <button id="kapat" onclick="kameraKapat()" disabled>
+
+    <button id="kapat"
+            onclick="kameraKapat()"
+            disabled>
       Kamerayı Kapat
     </button>
 
-    <video id="video" autoplay muted playsinline
+    <video id="video"
+           autoplay
+           muted
+           playsinline
            style="display:none;"></video>
 
     <p id="durum">Kamera kapalı.</p>
     <p id="sonuc"></p>
     <p id="hata"></p>
 
-    <p>
-      Bu sayfa QR kodunu yalnızca cihazınızda okur.
-      Okunan bilgi sunucuya gönderilmez.
-      Gerçek giriş kontrolü yapılmaz.
+    <p class="bilgi">
+      Bu aşamada QR kodları yalnızca cihazda okunur.
+      Kod içeriği ekranda gösterilmez ve sunucuya
+      gönderilmez. Gerçek giriş kontrolü yapılmaz.
     </p>
+
   </main>
 
   <script>
@@ -107,15 +131,19 @@
     const kapat = document.getElementById("kapat");
 
     const canvas = document.createElement("canvas");
+
     const ctx = canvas.getContext("2d", {
       willReadFrequently: true
     });
 
     async function kameraAc() {
+
       if (akis) return;
 
       hataAlani.textContent = "";
       sonuc.textContent = "";
+      sonOkunan = "";
+      sonOkumaZamani = 0;
 
       if (typeof jsQR !== "function") {
         durum.textContent = "QR okuyucu yüklenemedi.";
@@ -133,6 +161,7 @@
       durum.textContent = "Kamera başlatılıyor...";
 
       try {
+
         akis = await navigator.mediaDevices.getUserMedia({
           audio: false,
           video: {
@@ -142,6 +171,7 @@
 
         video.srcObject = akis;
         video.style.display = "block";
+
         await video.play();
 
         kapat.disabled = false;
@@ -152,30 +182,38 @@
 
         tara();
 
-      } catch (hata) {
+      } catch (err) {
+
         kameraKapat();
+
         durum.textContent = "Kamera açılamadı.";
+
         hataAlani.textContent =
-          "Hata: " + hata.name + " - " + hata.message;
+          "Hata: " + err.name + " - " + err.message;
       }
     }
 
     function tara() {
+
       if (!taramaAktif || !akis) return;
 
-      if (video.readyState >= 2 &&
-          video.videoWidth > 0 &&
-          video.videoHeight > 0) {
+      if (
+        video.readyState >= 2 &&
+        video.videoWidth > 0 &&
+        video.videoHeight > 0
+      ) {
 
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
 
         ctx.drawImage(
-          video, 0, 0, canvas.width, canvas.height
+          video, 0, 0,
+          canvas.width, canvas.height
         );
 
         const goruntu = ctx.getImageData(
-          0, 0, canvas.width, canvas.height
+          0, 0,
+          canvas.width, canvas.height
         );
 
         const kod = jsQR(
@@ -186,19 +224,18 @@
         );
 
         if (kod) {
+
           const simdi = Date.now();
 
-          if (kod.data !== sonOkunan ||
-              simdi - sonOkumaZamani > 3000) {
+          if (
+            kod.data !== sonOkunan ||
+            simdi - sonOkumaZamani > 3000
+          ) {
 
             sonOkunan = kod.data;
             sonOkumaZamani = simdi;
 
-            sonuc.textContent =
-              "QR OKUNDU (TEST): " + kod.data;
-
-            durum.textContent =
-              "QR algılandı. Giriş yetkisi verilmedi.";
+            qrAlgilandi();
           }
         }
       }
@@ -206,7 +243,23 @@
       taramaKimligi = requestAnimationFrame(tara);
     }
 
+    function qrAlgilandi() {
+
+      // TEST MODU:
+      // QR içeriği ekranda gösterilmez.
+      // Sunucuya veri gönderilmez.
+      // Gerçek giriş izni verilmez.
+
+      sonuc.textContent =
+        "QR kodu başarıyla okundu. " +
+        "Sunucu doğrulaması henüz aktif değil.";
+
+      durum.textContent =
+        "QR algılandı. Giriş yetkisi verilmedi.";
+    }
+
     function kameraKapat() {
+
       taramaAktif = false;
 
       if (taramaKimligi !== null) {
@@ -225,10 +278,14 @@
 
       ac.disabled = false;
       kapat.disabled = true;
+
       durum.textContent = "Kamera kapalı.";
     }
 
-    window.addEventListener("pagehide", kameraKapat);
+    window.addEventListener(
+      "pagehide",
+      kameraKapat
+    );
   </script>
 </body>
 </html>
